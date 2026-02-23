@@ -34,7 +34,7 @@ WHISPER_CPP_MODELS = [
     "large-v2-q8_0",
     "large-v2-q5_0",
     "large-v3",
-    "large-v3-q5_0"
+    "large-v3-q5_0",
     "large-v3-turbo",
     "large-v3-turbo-q8_0",
     "large-v3-turbo-q5_0",
