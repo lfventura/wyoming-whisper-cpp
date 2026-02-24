@@ -53,7 +53,7 @@ WORKDIR ${BASEDIR}
 COPY --from=build ${BASEDIR}/whisper.cpp/build/bin/simple-server ${BASEDIR}/whisper.cpp/build/bin/
 COPY --from=build ${BASEDIR}/whisper.cpp/build/src/libwhisper.so* ${BASEDIR}/whisper.cpp/build/src/
 COPY --from=build ${BASEDIR}/whisper.cpp/build/ggml/src/libggml* ${BASEDIR}/whisper.cpp/build/ggml/src/
-COPY --from=build /whisper.cpp/build/ggml/src/ggml-hip/libggml-hip.so whisper.cpp/build/ggml/src/ggml-hip/
+COPY --from=build /whisper.cpp/build/ggml/src/ggml-hip/libggml-hip.so* whisper.cpp/build/ggml/src/ggml-hip/
 
 # Copy the Wyoming Whisper C++ scripts to download models
 COPY --from=build ${BASEDIR}/whisper.cpp/models/ ${BASEDIR}/whisper.cpp/models/

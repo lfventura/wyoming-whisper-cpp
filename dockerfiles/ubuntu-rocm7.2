@@ -1,0 +1,72 @@
+# Use the official Ubuntu base image
+FROM rocm/dev-ubuntu-24.04:7.2 AS build
+ARG BASEDIR=/
+#https://rocm.docs.amd.com/en/latest/reference/gpu-arch-specs.html
+ARG GPU_TARGETS=gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1102,gfx1150,gfx1151,gfx1200,gfx1201
+
+# Install Whisper.cpp dependencies for building
+RUN sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    cmake \
+    build-essential \
+    hipblas-dev \
+    rocblas-dev \
+    && sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
+    
+# Clone the Whisper.cpp repository
+WORKDIR ${BASEDIR}
+RUN git clone https://github.com/ggerganov/whisper.cpp
+
+WORKDIR ${BASEDIR}/whisper.cpp
+
+# Copy simple-server source files
+COPY ./simple-server/ ${BASEDIR}/whisper.cpp/examples/simple-server/
+
+# add the subdirectory to the CMakeLists.txt
+RUN echo "add_subdirectory(simple-server)" >> ${BASEDIR}/whisper.cpp/examples/CMakeLists.txt
+
+# Build Whisper.cpp (with ROCm support)
+RUN cmake -B build -DGGML_HIP=ON -DAMDGPU_TARGETS=${GPU_TARGETS}
+RUN cmake --build build -j --config Release
+
+
+# Base image for running the Wyoming server
+FROM rocm/dev-ubuntu-24.04:7.2
+ARG BASEDIR=/
+
+# Install Wyoming Whisper dependencies
+RUN sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends \
+    python3-pip \
+    wget \
+    hipblas \
+    rocblas \
+    && sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
+
+# Install Wyoming
+RUN pip3 install --no-cache-dir --break-system-packages wyoming numpy
+
+WORKDIR ${BASEDIR}
+
+# Copy the Whisper.cpp build (only the necessary files)
+COPY --from=build ${BASEDIR}/whisper.cpp/build/bin/simple-server ${BASEDIR}/whisper.cpp/build/bin/
+COPY --from=build ${BASEDIR}/whisper.cpp/build/src/libwhisper.so* ${BASEDIR}/whisper.cpp/build/src/
+COPY --from=build ${BASEDIR}/whisper.cpp/build/ggml/src/libggml* ${BASEDIR}/whisper.cpp/build/ggml/src/
+COPY --from=build /whisper.cpp/build/ggml/src/ggml-hip/libggml-hip.so* whisper.cpp/build/ggml/src/ggml-hip/
+
+# Copy the Wyoming Whisper C++ scripts to download models
+COPY --from=build ${BASEDIR}/whisper.cpp/models/ ${BASEDIR}/whisper.cpp/models/
+
+# Copy the Wyoming Whisper C++ server
+COPY ./wyoming_whisper_cpp ${BASEDIR}/wyoming_whisper_cpp/
+COPY ./start.sh ${BASEDIR}/start.sh
+
+
+
+# Set the entrypoint
+ENTRYPOINT ["./start.sh"]
+
+# docker build -f dockerfiles/ubuntu-rocm7.2 -t wyoming-whisper-cpp:rocm7.2 .
+# docker run -it --rm --network host -v ./data:/data --device=/dev/kfd --device=/dev/dri --security-opt seccomp=unconfined --group-add video wyoming-whisper-cpp:rocm --model large-v3-turbo-q5_0
