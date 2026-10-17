@@ -12,7 +12,8 @@
 // command-line parameters
 struct whisper_params {
     int32_t n_threads  = std::min(4, (int32_t) std::thread::hardware_concurrency());
-    int32_t length_ms  = 10000;
+    // Transcribe the whole utterance at the end marker: shorter windows re-transcribe the kept overlap and duplicate words.
+    int32_t length_ms  = 30000;
     int32_t keep_ms    = 1000;
     int32_t max_tokens = 32;
     int32_t audio_ctx  = 0;
@@ -27,12 +28,28 @@ struct whisper_params {
     bool use_gpu       = true;
     bool flash_attn    = false;
     bool use_stdin     = false; // read audio from stdin instead of microphone
+    bool vad           = false;
+
+    float vad_threshold = 0.5f;
 
     std::string language  = "en";
     std::string model     = "models/large-v3-turbo-q5_0.bin";
+    std::string vad_model = "";
 };
 
 void whisper_print_usage(int argc, char ** argv, const whisper_params & params);
+
+// Whisper emits annotations such as "[BLANK_AUDIO]" or "(music)" for non-speech audio.
+static bool is_non_speech_annotation(const char * text) {
+    std::string s(text);
+    const size_t first = s.find_first_not_of(" \t\n");
+    if (first == std::string::npos) {
+        return true;
+    }
+    const size_t last = s.find_last_not_of(" \t\n");
+    const char open = s[first], close = s[last];
+    return (open == '[' && close == ']') || (open == '(' && close == ')');
+}
 
 static bool whisper_params_parse(int argc, char ** argv, whisper_params & params) {
     for (int i = 1; i < argc; i++) {
@@ -58,6 +75,9 @@ static bool whisper_params_parse(int argc, char ** argv, whisper_params & params
         else if (arg == "-ng"   || arg == "--no-gpu")        { params.use_gpu       = false; }
         else if (arg == "-fa"   || arg == "--flash-attn")    { params.flash_attn    = true; }
         else if (arg == "-stdin"|| arg == "--stdin")         { params.use_stdin     = true; }
+        else if (                  arg == "--vad")           { params.vad           = true; }
+        else if (arg == "-vm"   || arg == "--vad-model")     { params.vad_model     = argv[++i]; }
+        else if (arg == "-vt"   || arg == "--vad-threshold") { params.vad_threshold = std::stof(argv[++i]); }
 
         else {
             fprintf(stderr, "error: unknown argument: %s\n", arg.c_str());
@@ -91,6 +111,9 @@ void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params & para
     fprintf(stderr, "  -ng,      --no-gpu        [%-7s] disable GPU inference\n",                          params.use_gpu ? "false" : "true");
     fprintf(stderr, "  -fa,      --flash-attn    [%-7s] flash attention during inference\n",               params.flash_attn ? "true" : "false");
     fprintf(stderr, "  -stdin,   --stdin         [%-7s] read audio data from stdin\n",                     params.use_stdin ? "true" : "false");
+    fprintf(stderr, "            --vad           [%-7s] skip non-speech audio with voice activity detection\n", params.vad ? "true" : "false");
+    fprintf(stderr, "  -vm FNAME, --vad-model FNAME [%-7s] VAD model path (required with --vad)\n",        params.vad_model.c_str());
+    fprintf(stderr, "  -vt N,    --vad-threshold N [%-7.2f] speech probability threshold\n",               params.vad_threshold);
     fprintf(stderr, "\n");
 }
 
@@ -125,6 +148,14 @@ bool validate_params(const whisper_params & params) {
     }
     if (params.keep_ms > params.length_ms) {
         fprintf(stderr, "error: audio keep length cannot exceed audio length\n");
+        return false;
+    }
+    if (params.vad && params.vad_model.empty()) {
+        fprintf(stderr, "error: --vad requires --vad-model\n");
+        return false;
+    }
+    if (params.vad_threshold < 0.0f || params.vad_threshold > 1.0f) {
+        fprintf(stderr, "error: VAD threshold must be between 0 and 1\n");
         return false;
     }
     return true;
@@ -167,6 +198,10 @@ int main(int argc, char ** argv) {
     wparams.beam_search.beam_size = params.beam_size;
     wparams.audio_ctx        = params.audio_ctx;
     wparams.tdrz_enable      = params.tinydiarize;
+    wparams.vad              = params.vad;
+    wparams.vad_model_path   = params.vad ? params.vad_model.c_str() : nullptr;
+    wparams.vad_params       = whisper_vad_default_params();
+    wparams.vad_params.threshold = params.vad_threshold;
     wparams.temperature_inc  = params.no_fallback ? 0.0f : wparams.temperature_inc;
     wparams.prompt_tokens    = prompt_tokens.data();
     wparams.prompt_n_tokens  = prompt_tokens.size();
@@ -197,7 +232,7 @@ int main(int argc, char ** argv) {
     int pcmf32_len = 0, i, j, n_segments, token_count, segments_to_copy, bytes_to_copy;
     size_t b_read;
     float pcmf32_temp[n_samples_keep];
-    bool markerFound, should_process = false;
+    bool markerFound = false, should_process = false;
     const char * text;
 
     // main audio loop
@@ -232,11 +267,18 @@ int main(int argc, char ** argv) {
             }
 
             n_segments = whisper_full_n_segments(ctx);
+            if (params.vad) {
+                fprintf(stderr, "VAD speech segments: %d\n", whisper_full_n_vad_segments(ctx));
+            }
 
             // Print in stdoud
             for (i = 0; i < n_segments; i++) {
                 text = whisper_full_get_segment_text(ctx, i);
 
+                if (is_non_speech_annotation(text)) {
+                    fprintf(stderr, "whisper transcript segment %d skipped (non-speech): %s\n", i, text);
+                    continue;
+                }
                 printf("%s", text);
                 fprintf(stderr, "whisper transcript segment %d: %s\n",i, text);
                 fflush(stdout);
@@ -244,6 +286,7 @@ int main(int argc, char ** argv) {
 
             if (markerFound) {
                 markerFound = false;
+                should_process = false;
                 prompt_tokens.clear();
                 pcmf32_len = 0;
                 // Print end of text marker

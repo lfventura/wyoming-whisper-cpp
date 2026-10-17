@@ -41,8 +41,25 @@ WHISPER_CPP_MODELS = [
 ]
 
 
+# https://huggingface.co/ggml-org/whisper-vad
+WHISPER_CPP_VAD_MODELS = [
+    "silero-v5.1.2",
+    "silero-v6.2.0",
+]
+
+
 def model_name_to_path(model_name: str, dest_dir: Union[str, Path]) -> Path:
     return Path(dest_dir) / f"ggml-{model_name}.bin"
+
+
+def download_vad_model(
+    whisper_cpp_dir: Union[str, Path], model_name: str, dest_dir: Union[str, Path]
+) -> None:
+    """Downloads a whisper.cpp VAD model using the ggml download script."""
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    script_path = Path(whisper_cpp_dir) / "models" / "download-vad-model.sh"
+    subprocess.check_call([str(script_path), str(model_name), str(dest_dir)])
 
 
 def download_model(

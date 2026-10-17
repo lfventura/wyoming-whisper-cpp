@@ -41,7 +41,11 @@ docker-compose up -d
 - Since whisper.cpp v1.9 every shared library is built into `build/bin`; the old `COPY` globs matched nothing and the image shipped without `libwhisper`/`libggml*` (BuildKit does not fail on an empty glob). The libraries are now copied from `build/bin`, and the build runs `ldd` on `simple-server` and fails if anything is missing.
 - Sets `HOME=/data` and `XDG_CACHE_HOME=/data/.cache` so the container can run as a non-root UID and still persist the Mesa shader cache.
 
-To update whisper.cpp, bump `WHISPER_CPP_REF` and push: the GHCR workflow rebuilds the image.
+- `--vad` (wrapper) enables whisper.cpp's built-in Silero VAD: the model (`--vad-model`, default `silero-v6.2.0`) is downloaded to the data dir and silence or background noise is dropped before it reaches Whisper, instead of being transcribed as hallucinations ("Thank you.", "(water running)"). `--vad-threshold` tunes the speech probability (default 0.5).
+- `simple-server` fixes: it now transcribes the whole utterance at the end marker (default `--length` 30000 ms) instead of 10 s windows whose 1 s overlap was transcribed twice (duplicated words on longer utterances); skips segments that are only annotations such as `[BLANK_AUDIO]`; resets its processing flag after each utterance and initializes the end-marker flag.
+- The wrapper always answers with a `Transcript`, empty when nothing was said, so clients don't wait for a timeout.
+
+To update whisper.cpp, bump `WHISPER_CPP_REF` and push: the GHCR workflow rebuilds the image. Bump `wyoming_whisper_cpp/VERSION` when the wrapper changes, so the image gets a new tag.
 
 ## Prebuilt image (GHCR)
 
@@ -49,6 +53,7 @@ To update whisper.cpp, bump `WHISPER_CPP_REF` and push: the GHCR workflow rebuil
 
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan` (latest build)
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<whisper.cpp tag>` (e.g. `vulkan-v1.9.5`)
+- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<wrapper version>-<whisper.cpp tag>` (e.g. `vulkan-1.2.0-v1.9.5`), the one to pin in deployments
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-sha-<commit>`
 
 ## TrueNAS SCALE (Install via YAML)

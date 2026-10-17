@@ -58,6 +58,9 @@ class WhisperCppEventHandler(AsyncEventHandler):
                 text_lines.append(decoded)
                 current_text = " ".join(text_lines).strip()
                 await self.write_event(Transcript(text=current_text).event())
+        if not text_lines:
+            # No speech (e.g. VAD dropped everything): still answer, or the client waits until it times out
+            await self.write_event(Transcript(text="").event())
         _LOGGER.debug("Completed streaming transcription")
 
     async def handle_event(self, event: Event) -> bool:

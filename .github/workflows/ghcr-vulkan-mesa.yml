@@ -22,9 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Read pinned whisper.cpp version
+      - name: Read versions
         id: version
-        run: echo "whisper_cpp=$(grep -oP '^ARG WHISPER_CPP_REF=\K\S+' dockerfiles/ubuntu-vulkan-mesa)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "whisper_cpp=$(grep -oP '^ARG WHISPER_CPP_REF=\K\S+' dockerfiles/ubuntu-vulkan-mesa)" >> "$GITHUB_OUTPUT"
+          echo "wrapper=$(cat wyoming_whisper_cpp/VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -41,6 +43,7 @@ jobs:
           tags: |
             type=raw,value=vulkan
             type=raw,value=vulkan-${{ steps.version.outputs.whisper_cpp }}
+            type=raw,value=vulkan-${{ steps.version.outputs.wrapper }}-${{ steps.version.outputs.whisper_cpp }}
             type=sha,prefix=vulkan-sha-
 
       - name: Set up Docker Buildx

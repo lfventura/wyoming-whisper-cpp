@@ -12,7 +12,13 @@ from wyoming.server import AsyncServer
 
 from . import __version__
 from .const import WHISPER_LANGUAGES
-from .download import WHISPER_CPP_MODELS, download_model, model_name_to_path
+from .download import (
+    WHISPER_CPP_MODELS,
+    WHISPER_CPP_VAD_MODELS,
+    download_model,
+    download_vad_model,
+    model_name_to_path,
+)
 from .handler import WhisperCppEventHandler
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +66,23 @@ async def main() -> None:
         "--whisper-cpp-args",
         help="Additional arguments to pass to whisper cpp executable",
     )
+    parser.add_argument(
+        "--vad",
+        action="store_true",
+        help="Skip non-speech audio with voice activity detection (avoids hallucinations on silence)",
+    )
+    parser.add_argument(
+        "--vad-model",
+        choices=WHISPER_CPP_VAD_MODELS,
+        default="silero-v6.2.0",
+        help="Name of the whisper.cpp VAD model to use with --vad",
+    )
+    parser.add_argument(
+        "--vad-threshold",
+        type=float,
+        default=0.5,
+        help="Speech probability threshold for --vad (0-1)",
+    )
     #
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
     parser.add_argument(
@@ -97,6 +120,19 @@ async def main() -> None:
         model_path = model_name_to_path(args.model, args.download_dir)
 
     assert model_path is not None
+
+    vad_model_path: Optional[Path] = None
+    if args.vad:
+        for data_dir in args.data_dir:
+            maybe_vad_path = model_name_to_path(args.vad_model, data_dir)
+            if maybe_vad_path.exists():
+                vad_model_path = maybe_vad_path
+                break
+
+        if vad_model_path is None:
+            _LOGGER.debug("Downloading VAD model %s to %s", args.vad_model, args.download_dir)
+            download_vad_model(args.whisper_cpp_dir, args.vad_model, args.download_dir)
+            vad_model_path = model_name_to_path(args.vad_model, args.download_dir)
 
     if ".en" in args.model:
         # English-only model
@@ -137,6 +173,10 @@ async def main() -> None:
     _LOGGER.info("Ready")
 
     optional_args = []
+    if vad_model_path is not None:
+        optional_args.extend(
+            ["--vad", "--vad-model", str(vad_model_path), "--vad-threshold", str(args.vad_threshold)]
+        )
     if args.whisper_cpp_args:
         optional_args.extend(shlex.split(args.whisper_cpp_args))
 
