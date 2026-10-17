@@ -33,3 +33,24 @@ If you don't want to use docker, just follow all the command used in the dockerf
 ```shell
 docker-compose up -d
 ```
+
+## Fork changes (lfventura)
+
+- `dockerfiles/ubuntu-vulkan-mesa` pins whisper.cpp to a release tag (`ARG WHISPER_CPP_REF`) instead of building whatever is on upstream HEAD, and clones from `ggml-org/whisper.cpp`.
+- Installs `spirv-headers`, which newer whisper.cpp releases require for the Vulkan backend (`find_package(SPIRV-Headers CONFIG REQUIRED)`); without it `cmake -B build` fails.
+- Since whisper.cpp v1.9 every shared library is built into `build/bin`; the old `COPY` globs matched nothing and the image shipped without `libwhisper`/`libggml*` (BuildKit does not fail on an empty glob). The libraries are now copied from `build/bin`, and the build runs `ldd` on `simple-server` and fails if anything is missing.
+- Sets `HOME=/data` and `XDG_CACHE_HOME=/data/.cache` so the container can run as a non-root UID and still persist the Mesa shader cache.
+
+To update whisper.cpp, bump `WHISPER_CPP_REF` and push: the GHCR workflow rebuilds the image.
+
+## Prebuilt image (GHCR)
+
+`.github/workflows/ghcr-vulkan-mesa.yml` builds `dockerfiles/ubuntu-vulkan-mesa` on every push to `main` that touches the image sources and publishes:
+
+- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan` (latest build)
+- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<whisper.cpp tag>` (e.g. `vulkan-v1.9.5`)
+- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-sha-<commit>`
+
+## TrueNAS SCALE (Install via YAML)
+
+`truenas-custom-app.yaml` is a ready-to-paste compose file for Apps -> Discover -> Custom App -> Install via YAML. It pulls the GHCR image, runs as a dedicated non-root UID/GID and passes through a single GPU. Edit the UID/GID, render/video GIDs, device nodes and data path to match your host (see the comments at the top of the file).

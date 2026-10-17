@@ -1,0 +1,40 @@
+# TrueNAS SCALE: Apps -> Discover -> Custom App (chevron) -> Install via YAML.
+# Pulls the prebuilt image published by .github/workflows/ghcr-vulkan-mesa.yml.
+#
+# Adjust before installing:
+#   - user: dedicated non-root UID:GID for the app; the data dir must be owned by it
+#       mkdir -p /mnt/POOL/apps/whisper && chown -R 3014:3015 /mnt/POOL/apps/whisper
+#   - group_add: numeric GIDs that own the render/card nodes on the host (ls -ln /dev/dri)
+#   - devices: only the GPU to use; find it by PCI address (ls -l /dev/dri/by-path/)
+#   - volumes: host path for models and the Mesa shader cache
+#
+# Check the GPU is used: docker logs wyoming-whisper 2>&1 | grep whisper_backend_init_gpu
+# should name the GPU, not "CPU" or "llvmpipe".
+services:
+  whisper:
+    image: ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-v1.9.5
+    # To build on the host instead of pulling, replace the line above with:
+    # build:
+    #   context: https://github.com/lfventura/wyoming-whisper-cpp.git#main
+    #   dockerfile: dockerfiles/ubuntu-vulkan-mesa
+    # image: wyoming-whisper-cpp:vulkan-local
+    container_name: wyoming-whisper
+    restart: unless-stopped
+    user: "3014:3015"
+    group_add:
+      - "107"   # render
+      - "44"    # video
+    devices:
+      - /dev/dri/card1:/dev/dri/card1
+      - /dev/dri/renderD129:/dev/dri/renderD129
+    environment:
+      - GGML_VK_VISIBLE_DEVICES=0   # only one GPU is passed through, so it is device 0
+    volumes:
+      - /mnt/expensive-faststorage/apps/whisper:/data
+    command:
+      - --language
+      - pt
+      - --model
+      - large-v3-turbo-q5_0
+    ports:
+      - 10300:10300

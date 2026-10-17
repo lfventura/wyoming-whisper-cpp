@@ -10,10 +10,12 @@ RUN apt-get update && \
     build-essential \
     libvulkan-dev \
     glslc \
+    spirv-headers \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone the Whisper.cpp repository
-RUN git clone https://github.com/ggerganov/whisper.cpp
+# Pinned to the latest whisper.cpp release; bump the tag (or --build-arg WHISPER_CPP_REF=<tag>) to update.
+ARG WHISPER_CPP_REF=v1.9.5
+RUN git clone --depth 1 --branch ${WHISPER_CPP_REF} https://github.com/ggml-org/whisper.cpp
 WORKDIR /whisper.cpp
 
 # Copy simple-server source files
@@ -44,13 +46,18 @@ RUN apt-get update && \
 RUN pip3 install --no-cache-dir --break-system-packages wyoming numpy
 
 
+# Non-root UIDs have no home dir; keep the Mesa shader cache in the persistent volume.
+ENV HOME=/data \
+    XDG_CACHE_HOME=/data/.cache
+
 WORKDIR /wd
 
-# Copy the Whisper.cpp build (only the necessary files)
+# Copy the Whisper.cpp build (only the necessary files); since v1.9 all shared libs land in build/bin
 COPY --from=build /whisper.cpp/build/bin/simple-server whisper.cpp/build/bin/
-COPY --from=build /whisper.cpp/build/src/libwhisper.so* whisper.cpp/build/src/
-COPY --from=build /whisper.cpp/build/ggml/src/libggml* whisper.cpp/build/ggml/src/
-COPY --from=build /whisper.cpp/build/ggml/src/ggml-vulkan/libggml-vulkan.so* whisper.cpp/build/ggml/src/ggml-vulkan/
+COPY --from=build /whisper.cpp/build/bin/*.so* whisper.cpp/build/bin/
+
+# COPY globs that match nothing succeed silently, so fail here if any library is missing
+RUN ! LD_LIBRARY_PATH=/wd/whisper.cpp/build/bin ldd whisper.cpp/build/bin/simple-server | grep "not found"
 
 # Copy the Wyoming Whisper C++ scripts to download models
 COPY --from=build /whisper.cpp/models/ whisper.cpp/models/
