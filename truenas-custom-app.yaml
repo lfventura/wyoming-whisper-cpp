@@ -12,7 +12,7 @@
 # should name the GPU, not "CPU" or "llvmpipe".
 services:
   whisper:
-    image: ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-1.2.0-v1.9.5
+    image: ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-1.2.1-v1.9.5
     # To build on the host instead of pulling, replace the line above with:
     # build:
     #   context: https://github.com/lfventura/wyoming-whisper-cpp.git#main

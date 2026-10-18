@@ -53,7 +53,7 @@ To update whisper.cpp, bump `WHISPER_CPP_REF` and push: the GHCR workflow rebuil
 
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan` (latest build)
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<whisper.cpp tag>` (e.g. `vulkan-v1.9.5`)
-- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<wrapper version>-<whisper.cpp tag>` (e.g. `vulkan-1.2.0-v1.9.5`), the one to pin in deployments
+- `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-<wrapper version>-<whisper.cpp tag>` (e.g. `vulkan-1.2.1-v1.9.5`), the one to pin in deployments
 - `ghcr.io/lfventura/wyoming-whisper-cpp:vulkan-sha-<commit>`
 
 ## TrueNAS SCALE (Install via YAML)

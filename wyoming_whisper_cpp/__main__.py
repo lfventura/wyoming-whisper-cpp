@@ -19,7 +19,7 @@ from .download import (
     download_vad_model,
     model_name_to_path,
 )
-from .handler import WhisperCppEventHandler
+from .handler import WhisperCppEventHandler, WhisperCppProcess
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ async def main() -> None:
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
     )
-    model_proc_lock = asyncio.Lock()
+    whisper = WhisperCppProcess(model_proc)
 
     await server.run(
         partial(
@@ -206,8 +206,7 @@ async def main() -> None:
             wyoming_info,
             args,
             model_args,
-            model_proc,
-            model_proc_lock,
+            whisper,
         )
     )
 

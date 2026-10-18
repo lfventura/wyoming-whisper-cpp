@@ -257,6 +257,18 @@ int main(int argc, char ** argv) {
             should_process = true;
         }
 
+        // An utterance closed with almost no audio (client left right away) has nothing to transcribe
+        if (markerFound && pcmf32_len < WHISPER_SAMPLE_RATE / 10) {
+            fprintf(stderr, "Skipping %d audio samples (too short)\n", pcmf32_len);
+            markerFound = false;
+            should_process = false;
+            prompt_tokens.clear();
+            pcmf32_len = 0;
+            printf("\n<|endoftext|>\n");
+            fflush(stdout);
+            continue;
+        }
+
         if (should_process) {
             fprintf(stderr, "Processing %d audio samples (%.1f s)\n", pcmf32_len, (float) pcmf32_len / WHISPER_SAMPLE_RATE);
 
